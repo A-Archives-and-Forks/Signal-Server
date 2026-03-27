@@ -1673,7 +1673,13 @@ public class Accounts {
             accountIdentifier, account.getPhoneNumberIdentifier(), phoneNumberIdentifierFromAttribute);
       }
 
-      account.setNumber(item.get(ATTR_ACCOUNT_E164).s(), phoneNumberIdentifierFromAttribute);
+      final String attributeNumber = item.get(ATTR_ACCOUNT_E164).s();
+      if (account.getNumber() == null || !account.getNumber().equals(attributeNumber)) {
+        log.error("Missing or mismatched phone numbers for account {}. From JSON: {}; from attribute: {}",
+            accountIdentifier, account.getNumber(), attributeNumber);
+      }
+
+      account.setNumber(attributeNumber, phoneNumberIdentifierFromAttribute);
       account.setUuid(accountIdentifier);
       account.setUsernameHash(AttributeValues.getByteArray(item, ATTR_USERNAME_HASH, null));
       account.setUsernameLinkHandle(AttributeValues.getUUID(item, ATTR_USERNAME_LINK_UUID, null));
