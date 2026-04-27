@@ -5,7 +5,7 @@
 package org.whispersystems.textsecuregcm.storage;
 
 public class KeyIdUtil {
-  public static final long MAX_KEY_ID = (1L << 32) - 1;
+  public static final long MAX_KEY_ID = (1L << 31) - 1;
   public static final long MIN_KEY_ID = 0;
   private KeyIdUtil(){}
 
