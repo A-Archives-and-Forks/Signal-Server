@@ -16,6 +16,7 @@ import io.grpc.StatusRuntimeException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -29,8 +30,11 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.signal.chat.common.IdentityType;
+import org.signal.chat.common.ServiceIdentifier;
 import org.signal.chat.require.Auth;
 import org.signal.chat.rpc.Color;
 import org.signal.chat.rpc.NestedMessage;
@@ -43,6 +47,7 @@ import org.signal.chat.rpc.ValidationsRequest;
 import org.signal.chat.rpc.ValidationsResponse;
 import org.whispersystems.textsecuregcm.grpc.validators.ValidatorUtils;
 import org.whispersystems.textsecuregcm.util.TestRandomUtil;
+import org.whispersystems.textsecuregcm.util.UUIDUtil;
 
 public class ValidatingInterceptorTest {
 
@@ -120,6 +125,51 @@ public class ValidatingInterceptorTest {
         builderWithValidDefaults()
             .setBase64Url(validBase64Url)
             .build()));
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void serviceIdentifierIdentityTypeFieldValidator(final boolean messagePresent) {
+
+    final ValidationsRequest.Builder builder = builderWithValidDefaults();
+
+    if (messagePresent) {
+      builder.setAciServiceIdentifier(ServiceIdentifier.newBuilder()
+              .setIdentityType(IdentityType.IDENTITY_TYPE_ACI)
+              .setUuid(UUIDUtil.toByteString(UUID.randomUUID()))
+              .build())
+          .setPniServiceIdentifier(ServiceIdentifier.newBuilder()
+              .setIdentityType(IdentityType.IDENTITY_TYPE_PNI)
+              .setUuid(UUIDUtil.toByteString(UUID.randomUUID()))
+              .build());
+    } else {
+      builder.clearAciServiceIdentifier()
+          .clearPniServiceIdentifier();
+    }
+
+    assertDoesNotThrow(() -> stub.validationsEndpoint(builder.build()));
+  }
+
+  @ParameterizedTest
+  @EnumSource(value = org.signal.chat.common.IdentityType.class, names = {"IDENTITY_TYPE_UNSPECIFIED", "IDENTITY_TYPE_PNI"})
+  public void testServiceIdentifierIdentityTypeAciValidationFailure(final IdentityType identityType) {
+
+    assertStatusException(Status.INVALID_ARGUMENT, () -> stub.validationsEndpoint(builderWithValidDefaults()
+        .setAciServiceIdentifier(ServiceIdentifier.newBuilder()
+            .setIdentityType(identityType)
+            .setUuid(UUIDUtil.toByteString(UUID.randomUUID())))
+        .build()));
+  }
+
+  @ParameterizedTest
+  @EnumSource(value = org.signal.chat.common.IdentityType.class, names = {"IDENTITY_TYPE_UNSPECIFIED", "IDENTITY_TYPE_ACI"})
+  public void testServiceIdentifierIdentityTypePniValidationFailure(final IdentityType identityType) {
+
+    assertStatusException(Status.INVALID_ARGUMENT, () -> stub.validationsEndpoint(builderWithValidDefaults()
+        .setPniServiceIdentifier(ServiceIdentifier.newBuilder()
+            .setIdentityType(identityType)
+            .setUuid(UUIDUtil.toByteString(UUID.randomUUID())))
+        .build()));
   }
 
   @ParameterizedTest
@@ -470,7 +520,15 @@ public class ValidatingInterceptorTest {
         .setNested(NestedMessage.getDefaultInstance())
         .addRepeatedNested(NestedMessage.getDefaultInstance())
         .putMapNested("test", NestedMessage.getDefaultInstance())
-        .setBase64Url("123aBc_-");
+        .setBase64Url("123aBc_-")
+        .setAciServiceIdentifier(ServiceIdentifier.newBuilder()
+            .setIdentityType(IdentityType.IDENTITY_TYPE_ACI)
+            .setUuid(UUIDUtil.toByteString(UUID.randomUUID()))
+            .build())
+        .setPniServiceIdentifier(ServiceIdentifier.newBuilder()
+            .setIdentityType(IdentityType.IDENTITY_TYPE_PNI)
+            .setUuid(UUIDUtil.toByteString(UUID.randomUUID()))
+            .build());
   }
 
   private static void assertStatusException(final Status expected, final Executable serviceCall) {

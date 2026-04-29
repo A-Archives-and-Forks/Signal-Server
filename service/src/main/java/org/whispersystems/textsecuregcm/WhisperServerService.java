@@ -238,6 +238,7 @@ import org.whispersystems.textsecuregcm.storage.PersistentTimer;
 import org.whispersystems.textsecuregcm.storage.PhoneNumberIdentifiers;
 import org.whispersystems.textsecuregcm.storage.Profiles;
 import org.whispersystems.textsecuregcm.storage.ProfilesManager;
+import org.whispersystems.textsecuregcm.storage.ProfilesV2;
 import org.whispersystems.textsecuregcm.storage.PushChallengeDynamoDb;
 import org.whispersystems.textsecuregcm.storage.RedeemedReceiptsManager;
 import org.whispersystems.textsecuregcm.storage.RegistrationRecoveryPasswords;
@@ -469,8 +470,9 @@ public class WhisperServerService extends Application<WhisperServerConfiguration
         config.getDynamoDbTables().getClientReleases().getTableName());
     PhoneNumberIdentifiers phoneNumberIdentifiers = new PhoneNumberIdentifiers(dynamoDbAsyncClient,
         config.getDynamoDbTables().getPhoneNumberIdentifiers().getTableName());
-    Profiles profiles = new Profiles(dynamoDbClient, dynamoDbAsyncClient,
-        config.getDynamoDbTables().getProfiles().getTableName());
+    Profiles profilesV1 = new Profiles(dynamoDbClient, dynamoDbAsyncClient,
+        config.getDynamoDbTables().getProfilesV1().getTableName());
+    ProfilesV2 profiles = new ProfilesV2(dynamoDbClient, dynamoDbAsyncClient, config.getDynamoDbTables().getProfilesV2().getTableName());
 
     S3AsyncClient asyncKeysS3Client = S3AsyncClient.builder()
         .credentialsProvider(awsCredentialsProvider)
@@ -678,7 +680,7 @@ public class WhisperServerService extends Application<WhisperServerConfiguration
         storageServiceExecutor, retryExecutor, config.getSecureStorageServiceConfiguration());
     DisconnectionRequestManager disconnectionRequestManager = new DisconnectionRequestManager(pubsubClient,
         disconnectionRequestListenerExecutor, retryExecutor);
-    ProfilesManager profilesManager = new ProfilesManager(profiles, cacheCluster, retryExecutor, asyncCdnS3Client,
+    ProfilesManager profilesManager = new ProfilesManager(profilesV1, profiles, cacheCluster, retryExecutor, asyncCdnS3Client,
         config.getCdnConfiguration().bucket());
     MessagesCache messagesCache = new MessagesCache(messagesCluster, messageDeliveryScheduler,
         messageDeletionAsyncExecutor, retryExecutor, clock, experimentEnrollmentManager);

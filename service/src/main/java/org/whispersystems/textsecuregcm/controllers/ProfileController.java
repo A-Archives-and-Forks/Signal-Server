@@ -62,6 +62,8 @@ import org.signal.libsignal.zkgroup.VerificationFailedException;
 import org.signal.libsignal.zkgroup.groupsend.GroupSendDerivedKeyPair;
 import org.signal.libsignal.zkgroup.groupsend.GroupSendFullToken;
 import org.signal.libsignal.zkgroup.profiles.ExpiringProfileKeyCredentialResponse;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCommitment;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCredentialRequest;
 import org.signal.libsignal.zkgroup.profiles.ServerZkProfileOperations;
 import org.whispersystems.textsecuregcm.auth.Anonymous;
 import org.whispersystems.textsecuregcm.auth.AuthenticatedDevice;
@@ -94,7 +96,7 @@ import org.whispersystems.textsecuregcm.storage.AccountsManager;
 import org.whispersystems.textsecuregcm.storage.DeviceCapability;
 import org.whispersystems.textsecuregcm.storage.DynamicConfigurationManager;
 import org.whispersystems.textsecuregcm.storage.ProfilesManager;
-import org.whispersystems.textsecuregcm.storage.VersionedProfile;
+import org.whispersystems.textsecuregcm.storage.VersionedProfileV1;
 import org.whispersystems.textsecuregcm.util.HeaderUtils;
 import org.whispersystems.textsecuregcm.util.Pair;
 import org.whispersystems.textsecuregcm.util.ProfileHelper;
@@ -172,33 +174,28 @@ public class ProfileController {
     final Account account = accountsManager.getByAccountIdentifier(auth.accountIdentifier())
         .orElseThrow(() -> new WebApplicationException(Response.Status.UNAUTHORIZED));
 
-    final Optional<VersionedProfile> currentProfile =
-        profilesManager.get(auth.accountIdentifier(), request.version());
+    if (account.hasCapability(DeviceCapability.PROFILES_V2)) {
+      return Response.status(Response.Status.PRECONDITION_FAILED).build();
+    }
+
+    final Optional<VersionedProfileV1> currentProfile =
+        profilesManager.getV1(auth.accountIdentifier(), request.version());
 
     if (request.paymentAddress() != null && request.paymentAddress().length != 0) {
       final boolean hasDisallowedPrefix =
           dynamicConfigurationManager.getConfiguration().getPaymentsConfiguration().getDisallowedPrefixes().stream()
               .anyMatch(prefix -> account.getNumber().startsWith(prefix));
 
-      if (hasDisallowedPrefix && currentProfile.map(VersionedProfile::paymentAddress).isEmpty()) {
+      if (hasDisallowedPrefix && currentProfile.map(VersionedProfileV1::paymentAddress).isEmpty()) {
         return Response.status(Response.Status.FORBIDDEN).build();
       }
     }
 
-    Optional<String> currentAvatar = Optional.empty();
-    if (currentProfile.isPresent() && currentProfile.get().avatar() != null && currentProfile.get().avatar()
-        .startsWith("profiles/")) {
-      currentAvatar = Optional.of(currentProfile.get().avatar());
-    }
+    final Optional<String> currentAvatar = ProfileHelper.getCurrentAvatar(currentProfile);
+    final String avatar = ProfileHelper.getAvatar(request.getAvatarChange(), currentAvatar);
 
-    final String avatar = switch (request.getAvatarChange()) {
-      case UNCHANGED -> currentAvatar.orElse(null);
-      case CLEAR -> null;
-      case UPDATE -> ProfileHelper.generateAvatarObjectName();
-    };
-
-    profilesManager.set(auth.accountIdentifier(),
-        new VersionedProfile(
+    profilesManager.setV1(auth.accountIdentifier(),
+        new VersionedProfileV1(
             request.version(),
             request.name(),
             avatar,
@@ -440,13 +437,14 @@ public class ProfileController {
     final ExpiringProfileKeyCredentialResponse expiringProfileKeyCredentialResponse;
 
     if (account.getCurrentProfileVersion().map(version::equals).orElse(false)) {
-      expiringProfileKeyCredentialResponse = profilesManager.get(account.getUuid(), version)
+      expiringProfileKeyCredentialResponse = profilesManager.getV1(account.getUuid(), version)
           .map(profile -> {
             final ExpiringProfileKeyCredentialResponse profileKeyCredentialResponse;
             try {
               profileKeyCredentialResponse = ProfileHelper.getExpiringProfileKeyCredential(
-                  HexFormat.of().parseHex(encodedCredentialRequest),
-                  profile, new ServiceId.Aci(account.getUuid()), zkProfileOperations);
+                  new ProfileKeyCredentialRequest(HexFormat.of().parseHex(encodedCredentialRequest)),
+                  new ProfileKeyCommitment(profile.commitment()), new ServiceId.Aci(account.getUuid()),
+                  zkProfileOperations);
             } catch (VerificationFailedException | InvalidInputException e) {
               throw new BadRequestException(e);
             }
@@ -468,7 +466,7 @@ public class ProfileController {
       final boolean hasCredentialRequest,
       final ContainerRequestContext containerRequestContext) {
 
-    final Optional<VersionedProfile> maybeProfile = profilesManager.get(account.getUuid(), version);
+    final Optional<VersionedProfileV1> maybeProfile = profilesManager.getV1(account.getUuid(), version);
 
     if (maybeProfile.isEmpty()) {
       // this can happen if an account re-registers, which includes some device-transfer scenarios
@@ -481,17 +479,17 @@ public class ProfileController {
           .increment();
     }
 
-    final byte[] name = maybeProfile.map(VersionedProfile::name).orElse(null);
-    final byte[] about = maybeProfile.map(VersionedProfile::about).orElse(null);
-    final byte[] aboutEmoji = maybeProfile.map(VersionedProfile::aboutEmoji).orElse(null);
-    final String avatar = maybeProfile.map(VersionedProfile::avatar).orElse(null);
-    final byte[] phoneNumberSharing = maybeProfile.map(VersionedProfile::phoneNumberSharing).orElse(null);
+    final byte[] name = maybeProfile.map(VersionedProfileV1::name).orElse(null);
+    final byte[] about = maybeProfile.map(VersionedProfileV1::about).orElse(null);
+    final byte[] aboutEmoji = maybeProfile.map(VersionedProfileV1::aboutEmoji).orElse(null);
+    final String avatar = maybeProfile.map(VersionedProfileV1::avatar).orElse(null);
+    final byte[] phoneNumberSharing = maybeProfile.map(VersionedProfileV1::phoneNumberSharing).orElse(null);
 
     // Allow requests where either the version matches the latest version on Account or the latest version on Account
     // is empty to read the payment address.
     final byte[] paymentAddress = maybeProfile
-        .filter(p -> account.getCurrentProfileVersion().map(v -> v.equals(version)).orElse(true))
-        .map(VersionedProfile::paymentAddress)
+        .filter(p -> account.getCurrentProfileVersion().map(v -> v.equals(p.version())).orElse(true))
+        .map(VersionedProfileV1::paymentAddress)
         .orElse(null);
 
     return new VersionedProfileResponse(

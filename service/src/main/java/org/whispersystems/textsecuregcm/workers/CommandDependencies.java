@@ -63,6 +63,7 @@ import org.whispersystems.textsecuregcm.storage.PagedSingleUseKEMPreKeyStore;
 import org.whispersystems.textsecuregcm.storage.PhoneNumberIdentifiers;
 import org.whispersystems.textsecuregcm.storage.Profiles;
 import org.whispersystems.textsecuregcm.storage.ProfilesManager;
+import org.whispersystems.textsecuregcm.storage.ProfilesV2;
 import org.whispersystems.textsecuregcm.storage.RegistrationRecoveryPasswords;
 import org.whispersystems.textsecuregcm.storage.RegistrationRecoveryPasswordsManager;
 import org.whispersystems.textsecuregcm.storage.RepeatedUseECSignedPreKeyStore;
@@ -220,8 +221,10 @@ public record CommandDependencies(
         configuration.getDynamoDbTables().getAccounts().getUsedLinkDeviceTokensTableName());
     PhoneNumberIdentifiers phoneNumberIdentifiers = new PhoneNumberIdentifiers(dynamoDbAsyncClient,
         configuration.getDynamoDbTables().getPhoneNumberIdentifiers().getTableName());
-    Profiles profiles = new Profiles(dynamoDbClient, dynamoDbAsyncClient,
-        configuration.getDynamoDbTables().getProfiles().getTableName());
+    Profiles profilesV1 = new Profiles(dynamoDbClient, dynamoDbAsyncClient,
+        configuration.getDynamoDbTables().getProfilesV1().getTableName());
+    ProfilesV2 profiles = new ProfilesV2(dynamoDbClient, dynamoDbAsyncClient,
+        configuration.getDynamoDbTables().getProfilesV2().getTableName());
     S3AsyncClient asyncKeysS3Client = S3AsyncClient.builder()
         .credentialsProvider(awsCredentialsProvider)
         .region(Region.of(configuration.getPagedSingleUseKEMPreKeyStore().region()))
@@ -263,7 +266,7 @@ public record CommandDependencies(
         disconnectionRequestListenerExecutor, retryExecutor);
     MessagesCache messagesCache = new MessagesCache(messagesCluster,
         messageDeliveryScheduler, messageDeletionExecutor, retryExecutor, Clock.systemUTC(), experimentEnrollmentManager);
-    ProfilesManager profilesManager = new ProfilesManager(profiles, cacheCluster, retryExecutor, asyncCdnS3Client,
+    ProfilesManager profilesManager = new ProfilesManager(profilesV1, profiles, cacheCluster, retryExecutor, asyncCdnS3Client,
         configuration.getCdnConfiguration().bucket());
     ReportMessageDynamoDb reportMessageDynamoDb = new ReportMessageDynamoDb(dynamoDbClient, dynamoDbAsyncClient,
         configuration.getDynamoDbTables().getReportMessage().getTableName(),

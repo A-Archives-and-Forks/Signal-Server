@@ -44,9 +44,12 @@ import java.security.InvalidKeyException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1443,6 +1446,48 @@ class AccountsManagerTest {
         Arguments.of(account, Set.of(extraDeviceId),
             new MismatchedDevicesException(
                 new MismatchedDevices(Set.of(deviceId), Set.of((byte) (extraDeviceId)), Collections.emptySet())))
+    );
+  }
+
+  @ParameterizedTest
+  @MethodSource
+  void updateCurrentProfileVersion(final byte[] currentVersion, final byte[] expectedVersion, final byte[] newVersion, final boolean expectException) throws Exception {
+    final Account account = AccountsHelper.generateTestAccount("+14152222222", UUID.randomUUID(), UUID.randomUUID(), new ArrayList<>(), new byte[UnidentifiedAccessUtil.UNIDENTIFIED_ACCESS_KEY_LENGTH]);
+    final UUID accountIdentifier = account.getIdentifier(IdentityType.ACI);
+    addRetrievableAccount(account);
+
+    account.setCurrentProfileVersion(HexFormat.of().formatHex(currentVersion));
+
+    final AccountBadge badge = new AccountBadge("test", CLOCK.instant().plusSeconds(60), true);
+
+    assertTrue(account.getBadges().isEmpty());
+
+    if (expectException) {
+      assertThrows(WriteConflictException.class, () -> accountsManager.updateCurrentProfileVersion(accountIdentifier, newVersion, HexFormat.of().formatHex(expectedVersion), _ -> {}));
+    } else {
+      final Account updatedAccount = accountsManager.updateCurrentProfileVersion(accountIdentifier, newVersion,
+          HexFormat.of().formatHex(expectedVersion), a -> {
+
+              a.setBadges(CLOCK, new ArrayList<>(List.of(badge)));
+          });
+
+      assertArrayEquals(newVersion, HexFormat.of().parseHex(updatedAccount.getCurrentProfileVersion().orElseThrow()));
+      assertEquals(List.of(badge), updatedAccount.getBadges());
+    }
+  }
+
+  static Collection<Arguments> updateCurrentProfileVersion() {
+
+    final byte[] empty = new byte[0];
+    final byte[] version1 = TestRandomUtil.nextBytes(16);
+    final byte[] version2 = Arrays.copyOf(version1, version1.length);
+    version2[0] = (byte) (version2[0] + 1);
+
+    return List.of(
+        Arguments.argumentSet("no current version - matches", empty, empty, version1, false),
+        Arguments.argumentSet("no current version - conflict", empty, version1, version1, true),
+        Arguments.argumentSet("current version - empty conflict", version1, empty, version2, true),
+        Arguments.argumentSet("current version - matches", version1, version1, version2, false)
     );
   }
 

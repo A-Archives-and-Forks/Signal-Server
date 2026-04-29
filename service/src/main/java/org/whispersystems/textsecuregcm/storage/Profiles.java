@@ -19,9 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
-import org.whispersystems.textsecuregcm.util.AsyncTimerUtil;
 import org.whispersystems.textsecuregcm.util.AttributeValues;
-import org.whispersystems.textsecuregcm.util.Util;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
@@ -31,6 +29,8 @@ import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.QueryRequest;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
+import software.amazon.awssdk.services.dynamodb.model.Update;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 
 public class Profiles {
@@ -93,7 +93,7 @@ public class Profiles {
     this.tableName = tableName;
   }
 
-  public void set(final UUID uuid, final VersionedProfile profile) {
+  public void set(final UUID uuid, final VersionedProfileV1 profile) {
     SET_PROFILES_TIMER.record(() -> {
       dynamoDbClient.updateItem(UpdateItemRequest.builder()
           .tableName(tableName)
@@ -105,16 +105,17 @@ public class Profiles {
     });
   }
 
-  public CompletableFuture<Void> setAsync(final UUID uuid, final VersionedProfile profile) {
-    return AsyncTimerUtil.record(SET_PROFILES_TIMER, () -> dynamoDbAsyncClient.updateItem(UpdateItemRequest.builder()
+  /// Used to update a profile during the v2 migration.
+  public TransactWriteItem getTransactWriteItem(final UUID uuid, final VersionedProfileV1 profile) {
+    return TransactWriteItem.builder()
+        .update(Update.builder()
             .tableName(tableName)
             .key(buildPrimaryKey(uuid, profile.version()))
             .updateExpression(buildUpdateExpression(profile))
             .expressionAttributeNames(UPDATE_EXPRESSION_ATTRIBUTE_NAMES)
             .expressionAttributeValues(buildUpdateExpressionAttributeValues(profile))
-            .build()
-        ).thenRun(Util.NOOP)
-    ).toCompletableFuture();
+            .build())
+        .build();
   }
 
   private static Map<String, AttributeValue> buildPrimaryKey(final UUID uuid, final String version) {
@@ -124,7 +125,7 @@ public class Profiles {
   }
 
   @VisibleForTesting
-  static String buildUpdateExpression(final VersionedProfile profile) {
+  static String buildUpdateExpression(final VersionedProfileV1 profile) {
     final List<String> updatedAttributes = new ArrayList<>(5);
     final List<String> deletedAttributes = new ArrayList<>(5);
 
@@ -186,7 +187,7 @@ public class Profiles {
   }
 
   @VisibleForTesting
-  static Map<String, AttributeValue> buildUpdateExpressionAttributeValues(final VersionedProfile profile) {
+  static Map<String, AttributeValue> buildUpdateExpressionAttributeValues(final VersionedProfileV1 profile) {
     final Map<String, AttributeValue> expressionValues = new HashMap<>();
 
     expressionValues.put(":commitment", AttributeValues.fromByteArray(profile.commitment()));
@@ -217,7 +218,7 @@ public class Profiles {
     return expressionValues;
   }
 
-  public Optional<VersionedProfile> get(final UUID uuid, final String version) {
+  public Optional<VersionedProfileV1> get(final UUID uuid, final String version) {
     return GET_PROFILE_TIMER.record(() -> {
       final GetItemResponse response = dynamoDbClient.getItem(GetItemRequest.builder()
           .tableName(tableName)
@@ -229,19 +230,8 @@ public class Profiles {
     });
   }
 
-  public CompletableFuture<Optional<VersionedProfile>> getAsync(final UUID uuid, final String version) {
-    return AsyncTimerUtil.record(GET_PROFILE_TIMER, () -> dynamoDbAsyncClient.getItem(GetItemRequest.builder()
-        .tableName(tableName)
-        .key(buildPrimaryKey(uuid, version))
-        .consistentRead(true)
-        .build())
-        .thenApply(response ->
-            response.hasItem() ? Optional.of(fromItem(response.item())) : Optional.<VersionedProfile>empty())
-    ).toCompletableFuture();
-  }
-
-  private static VersionedProfile fromItem(final Map<String, AttributeValue> item) {
-    return new VersionedProfile(
+  private static VersionedProfileV1 fromItem(final Map<String, AttributeValue> item) {
+    return new VersionedProfileV1(
         AttributeValues.getString(item, ATTR_VERSION, null),
         getBytes(item, ATTR_NAME),
         AttributeValues.getString(item, ATTR_AVATAR, null),

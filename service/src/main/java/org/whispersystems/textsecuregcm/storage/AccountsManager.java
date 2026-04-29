@@ -37,8 +37,10 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -955,6 +957,42 @@ public class AccountsManager extends RedisPubSubAdapter<String, String> implemen
       // assume that all updaters passed to the public method actually modify the account
       return true;
     });
+  }
+
+  /// Using a pessimistic lock, updates the current profile version to `newVersion` if `currentProfileVersion` matches
+  /// `expectedCurrentVersion`. The caller may provide a supplementary `Consumer<Account>` for additional updates
+  ///
+  /// @throws WriteConflictException if the expected current version does not match the current version
+  public Account updateCurrentProfileVersion(final UUID accountIdentifier, final byte[] newVersion,
+      final String expectedCurrentVersion, final Consumer<Account> updater) throws WriteConflictException {
+
+    Objects.requireNonNull(expectedCurrentVersion, "expectedCurrentVersion");
+
+    // Always fetch a fresh, non-cached copy of the account before making modifications
+    final Account account = accounts.getByAccountIdentifier(accountIdentifier)
+        .orElseThrow(() -> new IllegalArgumentException("Account not found: " + accountIdentifier));
+
+    final String newVersionHex = HexFormat.of().formatHex(newVersion);
+
+    return accountLockManager.withLock(Set.of(account.getPhoneNumberIdentifier()), () -> {
+      final Account maybeUpdatedAccount = update(accountIdentifier, a -> {
+        if (!a.getCurrentProfileVersion().orElse("").equals(expectedCurrentVersion)) {
+          return false;
+        }
+
+        a.setCurrentProfileVersion(newVersionHex);
+
+        updater.accept(a);
+
+        return true;
+      });
+
+      if (!maybeUpdatedAccount.getCurrentProfileVersion().map(v -> v.equals(newVersionHex)).orElse(false)) {
+        throw new WriteConflictException();
+      }
+
+      return maybeUpdatedAccount;
+    }, accountLockExecutor);
   }
 
   /**

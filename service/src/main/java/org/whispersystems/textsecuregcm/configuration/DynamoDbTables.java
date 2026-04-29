@@ -64,6 +64,7 @@ public class DynamoDbTables {
   private final TableWithExpiration onetimeDonations;
   private final Table phoneNumberIdentifiers;
   private final Table profiles;
+  private final Table profilesV2;
   private final Table pushChallenge;
   private final Table pushNotificationExperimentSamples;
   private final TableWithExpiration redeemedReceipts;
@@ -92,6 +93,7 @@ public class DynamoDbTables {
       @JsonProperty("onetimeDonations") final TableWithExpiration onetimeDonations,
       @JsonProperty("phoneNumberIdentifiers") final Table phoneNumberIdentifiers,
       @JsonProperty("profiles") final Table profiles,
+      @JsonProperty("profilesV2") final Table profilesV2,
       @JsonProperty("pushChallenge") final Table pushChallenge,
       @JsonProperty("pushNotificationExperimentSamples") final Table pushNotificationExperimentSamples,
       @JsonProperty("redeemedReceipts") final TableWithExpiration redeemedReceipts,
@@ -119,6 +121,7 @@ public class DynamoDbTables {
     this.onetimeDonations = onetimeDonations;
     this.phoneNumberIdentifiers = phoneNumberIdentifiers;
     this.profiles = profiles;
+    this.profilesV2 = profilesV2;
     this.pushChallenge = pushChallenge;
     this.pushNotificationExperimentSamples = pushNotificationExperimentSamples;
     this.redeemedReceipts = redeemedReceipts;
@@ -228,8 +231,14 @@ public class DynamoDbTables {
 
   @NotNull
   @Valid
-  public Table getProfiles() {
+  public Table getProfilesV1() {
     return profiles;
+  }
+
+  @NotNull
+  @Valid
+  public Table getProfilesV2() {
+    return profilesV2;
   }
 
   @NotNull

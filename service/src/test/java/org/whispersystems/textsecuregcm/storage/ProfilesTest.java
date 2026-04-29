@@ -28,6 +28,7 @@ import org.whispersystems.textsecuregcm.tests.util.ProfileTestHelper;
 import org.whispersystems.textsecuregcm.util.AttributeValues;
 import org.whispersystems.textsecuregcm.util.TestRandomUtil;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
 
 @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 public class ProfilesTest {
@@ -36,7 +37,7 @@ public class ProfilesTest {
   static final DynamoDbExtension DYNAMO_DB_EXTENSION = new DynamoDbExtension(Tables.PROFILES);
 
   private Profiles profiles;
-  private VersionedProfile validProfile;
+  private VersionedProfileV1 validProfile;
 
   @BeforeEach
   void setUp() throws InvalidInputException {
@@ -51,28 +52,14 @@ public class ProfilesTest {
     final String avatar = "profiles/" + ProfileTestHelper.generateRandomBase64FromByteArray(16);
     final byte[] phoneNumberSharing = TestRandomUtil.nextBytes(29);
 
-    validProfile = new VersionedProfile(version, name, avatar, validAboutEmoji, validAbout, null, phoneNumberSharing, commitment);
+    validProfile = new VersionedProfileV1(version, name, avatar, validAboutEmoji, validAbout, null, phoneNumberSharing, commitment);
   }
 
   @Test
   void testSetGet() {
     profiles.set(ACI, validProfile);
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, validProfile.version());
-
-    assertThat(retrieved.isPresent()).isTrue();
-    assertThat(retrieved.get().name()).isEqualTo(validProfile.name());
-    assertThat(retrieved.get().avatar()).isEqualTo(validProfile.avatar());
-    assertThat(retrieved.get().commitment()).isEqualTo(validProfile.commitment());
-    assertThat(retrieved.get().about()).isEqualTo(validProfile.about());
-    assertThat(retrieved.get().aboutEmoji()).isEqualTo(validProfile.aboutEmoji());
-  }
-
-  @Test
-  void testSetGetAsync() {
-    profiles.setAsync(ACI, validProfile).join();
-
-    Optional<VersionedProfile> retrieved = profiles.getAsync(ACI, validProfile.version()).join();
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, validProfile.version());
 
     assertThat(retrieved.isPresent()).isTrue();
     assertThat(retrieved.get().name()).isEqualTo(validProfile.name());
@@ -97,12 +84,12 @@ public class ProfilesTest {
     final byte[] phoneNumberSharing = TestRandomUtil.nextBytes(29);
     final byte[] commitment = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
 
-    VersionedProfile updatedProfile = new VersionedProfile(version, name, differentAvatar,
+    VersionedProfileV1 updatedProfile = new VersionedProfileV1(version, name, differentAvatar,
         differentEmoji, differentAbout, paymentAddress, phoneNumberSharing, commitment);
 
     profiles.set(ACI, updatedProfile);
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, version);
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, version);
 
     assertThat(retrieved.isPresent()).isTrue();
     assertThat(retrieved.get().name()).isEqualTo(updatedProfile.name());
@@ -118,11 +105,11 @@ public class ProfilesTest {
     final byte[] name = TestRandomUtil.nextBytes(81);
     final byte[] commitment = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
 
-    VersionedProfile profile = new VersionedProfile(version, name, null, null, null, null, null,
+    VersionedProfileV1 profile = new VersionedProfileV1(version, name, null, null, null, null, null,
         commitment);
     profiles.set(ACI, profile);
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, version);
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, version);
 
     assertThat(retrieved.isPresent()).isTrue();
     assertThat(retrieved.get().name()).isEqualTo(profile.name());
@@ -136,7 +123,7 @@ public class ProfilesTest {
   void testSetReplace() throws InvalidInputException {
     profiles.set(ACI, validProfile);
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, validProfile.version());
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, validProfile.version());
 
     assertThat(retrieved.isPresent()).isTrue();
     assertThat(retrieved.get().name()).isEqualTo(validProfile.name());
@@ -153,7 +140,7 @@ public class ProfilesTest {
     final byte[] differentPhoneNumberSharing = TestRandomUtil.nextBytes(29);
     final byte[] differentCommitment = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
 
-    VersionedProfile updated = new VersionedProfile(validProfile.version(), differentName, differentAvatar, differentEmoji, differentAbout, null,
+    VersionedProfileV1 updated = new VersionedProfileV1(validProfile.version(), differentName, differentAvatar, differentEmoji, differentAbout, null,
         differentPhoneNumberSharing, differentCommitment);
     profiles.set(ACI, updated);
 
@@ -187,14 +174,14 @@ public class ProfilesTest {
     final byte[] commitmentOne = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
     final byte[] commitmentTwo = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
 
-    VersionedProfile profileOne = new VersionedProfile(versionOne, nameOne, avatarOne, null, null,
+    VersionedProfileV1 profileOne = new VersionedProfileV1(versionOne, nameOne, avatarOne, null, null,
         null, null, commitmentOne);
-    VersionedProfile profileTwo = new VersionedProfile(versionTwo, nameTwo, avatarTwo, aboutEmoji, about, null, null, commitmentTwo);
+    VersionedProfileV1 profileTwo = new VersionedProfileV1(versionTwo, nameTwo, avatarTwo, aboutEmoji, about, null, null, commitmentTwo);
 
     profiles.set(ACI, profileOne);
     profiles.set(ACI, profileTwo);
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, versionOne);
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, versionOne);
 
     assertThat(retrieved.isPresent()).isTrue();
     assertThat(retrieved.get().name()).isEqualTo(profileOne.name());
@@ -218,7 +205,7 @@ public class ProfilesTest {
     profiles.set(ACI, validProfile);
     final String missingVersion = "missingVersion";
 
-    Optional<VersionedProfile> retrieved = profiles.get(ACI, missingVersion);
+    Optional<VersionedProfileV1> retrieved = profiles.get(ACI, missingVersion);
     assertThat(retrieved.isPresent()).isFalse();
   }
 
@@ -242,10 +229,10 @@ public class ProfilesTest {
     final byte[] commitmentTwo = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
     final byte[] commitmentThree = new ProfileKey(TestRandomUtil.nextBytes(32)).getCommitment(new ServiceId.Aci(ACI)).serialize();
 
-    VersionedProfile profileOne = new VersionedProfile(versionOne, nameOne, avatarOne, null, null,
+    VersionedProfileV1 profileOne = new VersionedProfileV1(versionOne, nameOne, avatarOne, null, null,
         null, null, commitmentOne);
-    VersionedProfile profileTwo = new VersionedProfile(versionTwo, nameTwo, avatarTwo, aboutEmoji, about, null, null, commitmentTwo);
-    VersionedProfile profileThree = new VersionedProfile(versionThree, nameTwo, null, aboutEmoji, about, null, null,
+    VersionedProfileV1 profileTwo = new VersionedProfileV1(versionTwo, nameTwo, avatarTwo, aboutEmoji, about, null, null, commitmentTwo);
+    VersionedProfileV1 profileThree = new VersionedProfileV1(versionThree, nameTwo, null, aboutEmoji, about, null, null,
         commitmentThree);
 
     profiles.set(ACI, profileOne);
@@ -255,7 +242,7 @@ public class ProfilesTest {
     final List<String> avatars = profiles.deleteAll(ACI).join();
 
     for (String version : List.of(versionOne, versionTwo, versionThree)) {
-      final Optional<VersionedProfile> retrieved = profiles.get(ACI, version);
+      final Optional<VersionedProfileV1> retrieved = profiles.get(ACI, version);
       assertThat(retrieved.isPresent()).isFalse();
     }
 
@@ -263,9 +250,23 @@ public class ProfilesTest {
     assertThat(avatars.containsAll(List.of(avatarOne, avatarTwo))).isTrue();
   }
 
+  @Test
+  void testGetTransactWriteItem() {
+    final TransactWriteItem transactWriteItem = profiles.getTransactWriteItem(ACI, validProfile);
+
+    assertThat(transactWriteItem).isNotNull()
+        .extracting(TransactWriteItem::update).isNotNull();
+
+    assertThat(transactWriteItem.update().tableName()).isEqualTo(Tables.PROFILES.tableName());
+    assertThat(transactWriteItem.update().key()).isNotNull();
+    assertThat(transactWriteItem.update().updateExpression()).isEqualTo(Profiles.buildUpdateExpression(validProfile));
+    assertThat(transactWriteItem.update().expressionAttributeValues())
+        .isEqualTo(Profiles.buildUpdateExpressionAttributeValues(validProfile));
+  }
+
   @ParameterizedTest
   @MethodSource
-  void buildUpdateExpression(final VersionedProfile profile, final String expectedUpdateExpression) {
+  void buildUpdateExpression(final VersionedProfileV1 profile, final String expectedUpdateExpression) {
     assertEquals(expectedUpdateExpression, Profiles.buildUpdateExpression(profile));
   }
 
@@ -281,38 +282,38 @@ public class ProfilesTest {
 
     return Stream.of(
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, paymentAddress, phoneNumberSharing, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, paymentAddress, phoneNumberSharing, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name, #avatar = :avatar, #about = :about, #aboutEmoji = :aboutEmoji, #paymentAddress = :paymentAddress, #phoneNumberSharing = :phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, paymentAddress, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, paymentAddress, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name, #avatar = :avatar, #about = :about, #aboutEmoji = :aboutEmoji, #paymentAddress = :paymentAddress REMOVE #phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, null, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name, #avatar = :avatar, #about = :about, #aboutEmoji = :aboutEmoji REMOVE #paymentAddress, #phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, null, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, null, null, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name, #avatar = :avatar, #aboutEmoji = :aboutEmoji REMOVE #about, #paymentAddress, #phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, null, null, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, null, null, null, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name, #avatar = :avatar REMOVE #about, #aboutEmoji, #paymentAddress, #phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, name, null, null, null, null, null, commitment),
+            new VersionedProfileV1(version, name, null, null, null, null, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment), #name = :name REMOVE #avatar, #about, #aboutEmoji, #paymentAddress, #phoneNumberSharing"),
 
         Arguments.of(
-            new VersionedProfile(version, null, null, null, null, null, null, commitment),
+            new VersionedProfileV1(version, null, null, null, null, null, null, commitment),
             "SET #commitment = if_not_exists(#commitment, :commitment) REMOVE #name, #avatar, #about, #aboutEmoji, #paymentAddress, #phoneNumberSharing")
     );
   }
 
   @ParameterizedTest
   @MethodSource
-  void buildUpdateExpressionAttributeValues(final VersionedProfile profile, final Map<String, AttributeValue> expectedAttributeValues) {
+  void buildUpdateExpressionAttributeValues(final VersionedProfileV1 profile, final Map<String, AttributeValue> expectedAttributeValues) {
     assertEquals(expectedAttributeValues, Profiles.buildUpdateExpressionAttributeValues(profile));
   }
 
@@ -328,7 +329,7 @@ public class ProfilesTest {
 
     return Stream.of(
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, paymentAddress, phoneNumberSharing, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, paymentAddress, phoneNumberSharing, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name", AttributeValues.fromByteArray(name),
@@ -339,7 +340,7 @@ public class ProfilesTest {
                 ":phoneNumberSharing", AttributeValues.fromByteArray(phoneNumberSharing))),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, paymentAddress, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, paymentAddress, null, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name", AttributeValues.fromByteArray(name),
@@ -349,7 +350,7 @@ public class ProfilesTest {
                 ":paymentAddress", AttributeValues.fromByteArray(paymentAddress))),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, about, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, about, null, null, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name", AttributeValues.fromByteArray(name),
@@ -358,7 +359,7 @@ public class ProfilesTest {
                 ":about", AttributeValues.fromByteArray(about))),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, emoji, null, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, emoji, null, null, null, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name",AttributeValues.fromByteArray(name),
@@ -366,20 +367,20 @@ public class ProfilesTest {
                 ":aboutEmoji", AttributeValues.fromByteArray(emoji))),
 
         Arguments.of(
-            new VersionedProfile(version, name, avatar, null, null, null, null, commitment),
+            new VersionedProfileV1(version, name, avatar, null, null, null, null, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name", AttributeValues.fromByteArray(name),
                 ":avatar", AttributeValues.fromString(avatar))),
 
         Arguments.of(
-            new VersionedProfile(version, name, null, null, null, null, null, commitment),
+            new VersionedProfileV1(version, name, null, null, null, null, null, commitment),
             Map.of(
                 ":commitment", AttributeValues.fromByteArray(commitment),
                 ":name", AttributeValues.fromByteArray(name))),
 
         Arguments.of(
-            new VersionedProfile(version, null, null, null, null, null, null, commitment),
+            new VersionedProfileV1(version, null, null, null, null, null, null, commitment),
             Map.of(":commitment", AttributeValues.fromByteArray(commitment)))
     );
   }

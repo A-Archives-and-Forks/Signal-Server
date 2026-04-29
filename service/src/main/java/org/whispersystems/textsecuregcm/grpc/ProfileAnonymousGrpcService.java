@@ -5,16 +5,18 @@
 
 package org.whispersystems.textsecuregcm.grpc;
 
-import io.grpc.Status;
-import io.grpc.StatusException;
 import java.time.Clock;
+import java.util.Optional;
+import com.google.common.annotations.VisibleForTesting;
+import org.signal.chat.errors.FailedUnidentifiedAuthorization;
+import org.signal.chat.errors.NotFound;
 import org.signal.chat.profile.CredentialType;
 import org.signal.chat.profile.GetExpiringProfileKeyCredentialAnonymousRequest;
-import org.signal.chat.profile.GetExpiringProfileKeyCredentialResponse;
+import org.signal.chat.profile.GetExpiringProfileKeyCredentialAnonymousResponse;
 import org.signal.chat.profile.GetUnversionedProfileAnonymousRequest;
-import org.signal.chat.profile.GetUnversionedProfileResponse;
+import org.signal.chat.profile.GetUnversionedProfileAnonymousResponse;
 import org.signal.chat.profile.GetVersionedProfileAnonymousRequest;
-import org.signal.chat.profile.GetVersionedProfileResponse;
+import org.signal.chat.profile.GetVersionedProfileAnonymousResponse;
 import org.signal.chat.profile.SimpleProfileAnonymousGrpc;
 import org.signal.libsignal.zkgroup.ServerSecretParams;
 import org.signal.libsignal.zkgroup.profiles.ServerZkProfileOperations;
@@ -38,77 +40,116 @@ public class ProfileAnonymousGrpcService extends SimpleProfileAnonymousGrpc.Prof
       final ProfilesManager profilesManager,
       final ProfileBadgeConverter profileBadgeConverter,
       final ServerSecretParams serverSecretParams) {
+    this(accountsManager,
+        profilesManager,
+        profileBadgeConverter,
+        new ServerZkProfileOperations(serverSecretParams),
+        new GroupSendTokenUtil(serverSecretParams, Clock.systemUTC()));
+  }
+
+  @VisibleForTesting
+  ProfileAnonymousGrpcService(final AccountsManager accountsManager,
+      final ProfilesManager profilesManager,
+      final ProfileBadgeConverter profileBadgeConverter,
+      final ServerZkProfileOperations zkProfileOperations,
+      final GroupSendTokenUtil groupSendTokenUtil) {
     this.accountsManager = accountsManager;
     this.profilesManager = profilesManager;
     this.profileBadgeConverter = profileBadgeConverter;
-    this.zkProfileOperations = new ServerZkProfileOperations(serverSecretParams);
-    this.groupSendTokenUtil = new GroupSendTokenUtil(serverSecretParams, Clock.systemUTC());
+    this.zkProfileOperations = zkProfileOperations;
+    this.groupSendTokenUtil = groupSendTokenUtil;
   }
 
   @Override
-  public GetUnversionedProfileResponse getUnversionedProfile(final GetUnversionedProfileAnonymousRequest request) throws StatusException {
+  public GetUnversionedProfileAnonymousResponse getUnversionedProfile(final GetUnversionedProfileAnonymousRequest request) {
     final ServiceIdentifier targetIdentifier =
         ServiceIdentifierUtil.fromGrpcServiceIdentifier(request.getRequest().getServiceIdentifier());
 
     // Callers must be authenticated to request unversioned profiles by PNI
     if (targetIdentifier.identityType() == IdentityType.PNI) {
-      throw Status.UNAUTHENTICATED.asException();
+      throw GrpcExceptions.invalidArguments("aci service identifier type required");
     }
 
-    final Account account = switch (request.getAuthenticationCase()) {
-      case GROUP_SEND_TOKEN -> {
-        if (!groupSendTokenUtil.checkGroupSendToken(request.getGroupSendToken(), targetIdentifier)) {
-          throw Status.UNAUTHENTICATED.asException();
-        }
-        yield accountsManager.getByServiceIdentifier(targetIdentifier)
-            .orElseThrow(Status.NOT_FOUND::asException);
-      }
+    final Optional<Account> targetAccount = accountsManager.getByServiceIdentifier(targetIdentifier);
+
+    final boolean authorized = switch (request.getAuthenticationCase()) {
+      case GROUP_SEND_TOKEN -> groupSendTokenUtil.checkGroupSendToken(request.getGroupSendToken(), targetIdentifier);
       case UNIDENTIFIED_ACCESS_KEY ->
-          getTargetAccountAndValidateUnidentifiedAccess(targetIdentifier, request.getUnidentifiedAccessKey().toByteArray());
-      default -> throw Status.INVALID_ARGUMENT.asException();
+          targetAccount.map(a -> UnidentifiedAccessUtil.checkUnidentifiedAccess(a, request.getUnidentifiedAccessKey().toByteArray()))
+              .orElse(false);
+      default -> throw GrpcExceptions.constraintViolation("invalid authentication");
     };
 
-    return ProfileGrpcHelper.buildUnversionedProfileResponse(targetIdentifier,
-            null,
-            account,
-            profileBadgeConverter);
+    if (!authorized) {
+      return GetUnversionedProfileAnonymousResponse.newBuilder()
+          .setFailedUnidentifiedAuthorization(FailedUnidentifiedAuthorization.getDefaultInstance())
+          .build();
+    }
+
+    return targetAccount.map(account ->
+            GetUnversionedProfileAnonymousResponse.newBuilder()
+                .setResult(ProfileGrpcHelper.buildUnversionedProfileResult(targetIdentifier,
+                    null,
+                    account,
+                    profileBadgeConverter))
+                .build())
+        .orElseGet(() -> GetUnversionedProfileAnonymousResponse.newBuilder()
+            .setNotFound(NotFound.getDefaultInstance())
+            .build());
   }
 
   @Override
-  public GetVersionedProfileResponse getVersionedProfile(final GetVersionedProfileAnonymousRequest request) throws StatusException {
+  public GetVersionedProfileAnonymousResponse getVersionedProfile(final GetVersionedProfileAnonymousRequest request) {
     final ServiceIdentifier targetIdentifier = ServiceIdentifierUtil.fromGrpcServiceIdentifier(request.getRequest().getAccountIdentifier());
 
-    if (targetIdentifier.identityType() != IdentityType.ACI) {
-      throw Status.INVALID_ARGUMENT.withDescription("Expected ACI service identifier").asException();
-    }
+    final Optional<Account> targetAccount = getTargetAccountAndValidateUnidentifiedAccess(targetIdentifier, request.getUnidentifiedAccessKey().toByteArray());
 
-    final Account targetAccount = getTargetAccountAndValidateUnidentifiedAccess(targetIdentifier, request.getUnidentifiedAccessKey().toByteArray());
-    return ProfileGrpcHelper.getVersionedProfile(targetAccount, profilesManager, request.getRequest().getVersion());
+    return targetAccount.flatMap(account ->
+        ProfileGrpcHelper.getVersionedProfile(account,
+                profilesManager,
+                request.getRequest().getVersion().toByteArray(),
+                request.getRequest().getDataEtag().toByteArray(),
+                request.getRequest().getPaymentAddressEtag().toByteArray()))
+        .map(result ->
+            GetVersionedProfileAnonymousResponse.newBuilder()
+                .setResult(result)
+                .build())
+        .orElseGet(() ->
+            GetVersionedProfileAnonymousResponse.newBuilder()
+                .setNotFound(NotFound.getDefaultInstance())
+                .build());
   }
 
   @Override
-  public GetExpiringProfileKeyCredentialResponse getExpiringProfileKeyCredential(
-      final GetExpiringProfileKeyCredentialAnonymousRequest request) throws StatusException {
+  public GetExpiringProfileKeyCredentialAnonymousResponse getExpiringProfileKeyCredential(
+      final GetExpiringProfileKeyCredentialAnonymousRequest request) {
     final ServiceIdentifier targetIdentifier = ServiceIdentifierUtil.fromGrpcServiceIdentifier(request.getRequest().getAccountIdentifier());
-
-    if (targetIdentifier.identityType() != IdentityType.ACI) {
-      throw Status.INVALID_ARGUMENT.withDescription("Expected ACI service identifier").asException();
-    }
 
     if (request.getRequest().getCredentialType() != CredentialType.CREDENTIAL_TYPE_EXPIRING_PROFILE_KEY) {
-      throw Status.INVALID_ARGUMENT.withDescription("Expected expiring profile key credential type").asException();
+      throw GrpcExceptions.constraintViolation("invalid credential type");
     }
 
-    final Account account = getTargetAccountAndValidateUnidentifiedAccess(
+    final Optional<Account> maybeAccount = getTargetAccountAndValidateUnidentifiedAccess(
         targetIdentifier, request.getUnidentifiedAccessKey().toByteArray());
-    return ProfileGrpcHelper.getExpiringProfileKeyCredentialResponse(account.getUuid(),
-            request.getRequest().getVersion(), request.getRequest().getCredentialRequest().toByteArray(), profilesManager, zkProfileOperations);
+
+    return maybeAccount.map(account ->
+        ProfileGrpcHelper.getExpiringProfileKeyCredentialResult(account,
+                request.getRequest().getVersion().toByteArray(), request.getRequest().getCredentialRequest().toByteArray(),
+                profilesManager, zkProfileOperations)
+            .map(result -> GetExpiringProfileKeyCredentialAnonymousResponse.newBuilder()
+                .setResult(result)
+                .build())
+            .orElseGet(() -> GetExpiringProfileKeyCredentialAnonymousResponse.newBuilder()
+                .setNotFound(NotFound.getDefaultInstance())
+                .build())).orElseGet(() -> GetExpiringProfileKeyCredentialAnonymousResponse.newBuilder()
+        .setNotFound(NotFound.getDefaultInstance())
+        .build());
+
   }
 
-  private Account getTargetAccountAndValidateUnidentifiedAccess(final ServiceIdentifier targetIdentifier, final byte[] unidentifiedAccessKey) throws StatusException {
+  private Optional<Account> getTargetAccountAndValidateUnidentifiedAccess(final ServiceIdentifier targetIdentifier, final byte[] unidentifiedAccessKey)  {
 
     return accountsManager.getByServiceIdentifier(targetIdentifier)
-        .filter(targetAccount -> UnidentifiedAccessUtil.checkUnidentifiedAccess(targetAccount, unidentifiedAccessKey))
-        .orElseThrow(Status.UNAUTHENTICATED::asException);
+        .filter(targetAccount -> UnidentifiedAccessUtil.checkUnidentifiedAccess(targetAccount, unidentifiedAccessKey));
   }
 }

@@ -9,7 +9,7 @@ import io.grpc.Status;
 import org.whispersystems.textsecuregcm.entities.AvatarChange;
 
 public class AvatarChangeUtil {
-  public static AvatarChange fromGrpcAvatarChange(final org.signal.chat.profile.SetProfileRequest.AvatarChange avatarChangeType) {
+  public static AvatarChange fromGrpcAvatarChange(final org.signal.chat.profile.SetProfileV1Request.AvatarChange avatarChangeType) {
     return switch (avatarChangeType) {
       case AVATAR_CHANGE_UNCHANGED -> AvatarChange.AVATAR_CHANGE_UNCHANGED;
       case AVATAR_CHANGE_CLEAR -> AvatarChange.AVATAR_CHANGE_CLEAR;

@@ -7,21 +7,27 @@ package org.whispersystems.textsecuregcm.grpc;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
-import io.grpc.Status;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
-import io.grpc.StatusException;
 import org.signal.chat.profile.Badge;
 import org.signal.chat.profile.BadgeSvg;
-import org.signal.chat.profile.GetExpiringProfileKeyCredentialResponse;
-import org.signal.chat.profile.GetUnversionedProfileResponse;
-import org.signal.chat.profile.GetVersionedProfileResponse;
+import org.signal.chat.profile.DataEtag;
+import org.signal.chat.profile.GetExpiringProfileKeyCredentialResult;
+import org.signal.chat.profile.GetUnversionedProfileResult;
+import org.signal.chat.profile.GetVersionedProfileResult;
+import org.signal.chat.profile.GetVersionedProfileV1Response;
 import org.signal.libsignal.protocol.ServiceId;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.VerificationFailedException;
 import org.signal.libsignal.zkgroup.profiles.ExpiringProfileKeyCredentialResponse;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCommitment;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCredentialRequest;
 import org.signal.libsignal.zkgroup.profiles.ServerZkProfileOperations;
 import org.whispersystems.textsecuregcm.auth.UnidentifiedAccessChecksum;
 import org.whispersystems.textsecuregcm.badges.ProfileBadgeConverter;
@@ -30,32 +36,88 @@ import org.whispersystems.textsecuregcm.storage.Account;
 import org.whispersystems.textsecuregcm.storage.DeviceCapability;
 import org.whispersystems.textsecuregcm.storage.ProfilesManager;
 import org.whispersystems.textsecuregcm.storage.VersionedProfile;
+import org.whispersystems.textsecuregcm.storage.VersionedProfileV1;
 import org.whispersystems.textsecuregcm.util.ProfileHelper;
 
 public class ProfileGrpcHelper {
-  static GetVersionedProfileResponse getVersionedProfile(final Account account,
+  static Optional<GetVersionedProfileResult> getVersionedProfile(final Account account,
       final ProfilesManager profilesManager,
-      final String requestVersion) throws StatusException {
+      final byte[] requestVersion,
+      final byte[] requestDataEtag,
+      final byte[] requestPaymentAddressEtag) {
 
-    final VersionedProfile profile = profilesManager.get(account.getUuid(), requestVersion)
-        .orElseThrow(Status.NOT_FOUND.withDescription("Profile version not found")::asException);
-
-    final GetVersionedProfileResponse.Builder responseBuilder = GetVersionedProfileResponse.newBuilder();
-
-    responseBuilder
-        .setName(ByteString.copyFrom(profile.name()))
-        .setAbout(ByteString.copyFrom(profile.about()))
-        .setAboutEmoji(ByteString.copyFrom(profile.aboutEmoji()))
-        .setAvatar(profile.avatar())
-        .setPhoneNumberSharing(ByteString.copyFrom(profile.phoneNumberSharing()));
-
-    // Allow requests where either the version matches the latest version on Account or the latest version on Account
-    // is empty to read the payment address.
-    if (account.getCurrentProfileVersion().map(v -> v.equals(requestVersion)).orElse(true)) {
-      responseBuilder.setPaymentAddress(ByteString.copyFrom(profile.paymentAddress()));
+    final Optional<VersionedProfile> profile;
+    if (account.hasCapability(DeviceCapability.PROFILES_V2)) {
+      profile = profilesManager.get(account.getUuid(), requestVersion);
+    } else {
+      profile = Optional.empty();
     }
 
-    return responseBuilder.build();
+    final Optional<VersionedProfileV1> v1Profile;
+    if (profile.isEmpty()) {
+      v1Profile = profilesManager.getV1(account.getUuid(), HexFormat.of().formatHex(requestVersion));
+    } else {
+      v1Profile = Optional.empty();
+    }
+
+    if (profile.isEmpty() && v1Profile.isEmpty()) {
+      return Optional.empty();
+    }
+
+    final GetVersionedProfileResult.Builder responseBuilder = GetVersionedProfileResult.newBuilder();
+
+    profile.ifPresent(p -> {
+      if (requestDataEtag.length > 0 && Arrays.equals(requestDataEtag, p.dataHash())) {
+        responseBuilder.setDataEtagMatched(true);
+      } else {
+        responseBuilder.setDataEtag(DataEtag.newBuilder()
+            .setData(ByteString.copyFrom(p.data()))
+            .setEtag(ByteString.copyFrom(p.dataHash()))
+            .build());
+      }
+    });
+
+    v1Profile.ifPresent(p -> {
+      final GetVersionedProfileV1Response.Builder v1ResponseBuilder = GetVersionedProfileV1Response.newBuilder();
+
+      v1ResponseBuilder
+          .setName(ByteString.copyFrom(p.name()))
+          .setAbout(ByteString.copyFrom(p.about()))
+          .setAboutEmoji(ByteString.copyFrom(p.aboutEmoji()))
+          .setPhoneNumberSharing(ByteString.copyFrom(p.phoneNumberSharing()));
+
+      if (p.avatar() != null) {
+        v1ResponseBuilder.setAvatar(p.avatar());
+      }
+
+      responseBuilder.setV1Response(v1ResponseBuilder);
+    });
+
+    // Include payment address if the version matches the latest version on Account or the latest version on Account
+    // is empty
+    if (account.getCurrentProfileVersion().map(v -> v.equals(HexFormat.of().formatHex(requestVersion))).orElse(true)) {
+      final Optional<byte []> paymentAddress = profile.map(VersionedProfile::paymentAddress).or(() -> v1Profile.map(VersionedProfileV1::paymentAddress));
+
+      if (paymentAddress.isPresent()) {
+
+        final boolean paymentAddressETagMatches = requestPaymentAddressEtag.length > 0 &&
+            profile.map(VersionedProfile::paymentAddressHash)
+                .map(h -> Arrays.equals(requestPaymentAddressEtag, h))
+                .orElse(false);
+
+        if (paymentAddressETagMatches) {
+          responseBuilder.setPaymentAddressEtagMatched(true);
+        } else {
+          responseBuilder.setPaymentAddressDataEtag(DataEtag.newBuilder()
+              .setData(ByteString.copyFrom(paymentAddress.get()))
+              .setEtag(ByteString.copyFrom(
+                  profile.map(VersionedProfile::paymentAddressHash).orElseGet(() -> hash(paymentAddress.get()))))
+              .build());
+        }
+      }
+    }
+
+    return Optional.of(responseBuilder.build());
   }
 
   @VisibleForTesting
@@ -95,54 +157,79 @@ public class ProfileGrpcHelper {
     return grpcBadgeSvgs;
   }
 
-  static GetUnversionedProfileResponse buildUnversionedProfileResponse(
+  static GetUnversionedProfileResult buildUnversionedProfileResult(
       final ServiceIdentifier targetIdentifier,
       final UUID requesterUuid,
       final Account targetAccount,
       final ProfileBadgeConverter profileBadgeConverter) {
-    final GetUnversionedProfileResponse.Builder responseBuilder = GetUnversionedProfileResponse.newBuilder()
+    final GetUnversionedProfileResult.Builder resultBuilder = GetUnversionedProfileResult.newBuilder()
         .setIdentityKey(ByteString.copyFrom(targetAccount.getIdentityKey(targetIdentifier.identityType()).serialize()))
         .addAllCapabilities(buildAccountCapabilities(targetAccount));
 
     switch (targetIdentifier.identityType()) {
       case ACI -> {
-        responseBuilder.setUnrestrictedUnidentifiedAccess(targetAccount.isUnrestrictedUnidentifiedAccess())
-            .addAllBadges(buildBadges(profileBadgeConverter.convert(
-                RequestAttributesUtil.getAvailableAcceptedLocales(),
+        resultBuilder.setUnrestrictedUnidentifiedAccess(targetAccount.isUnrestrictedUnidentifiedAccess())
+            .addAllBadges(
+                buildBadges(profileBadgeConverter.convert(RequestAttributesUtil.getAvailableAcceptedLocales(),
                 targetAccount.getBadges(),
                 ProfileHelper.isSelfProfileRequest(requesterUuid, targetIdentifier))));
 
         targetAccount.getUnidentifiedAccessKey()
             .map(UnidentifiedAccessChecksum::generateFor)
             .map(ByteString::copyFrom)
-            .ifPresent(responseBuilder::setUnidentifiedAccess);
+            .ifPresent(resultBuilder::setUnidentifiedAccess);
       }
-      case PNI -> responseBuilder.setUnrestrictedUnidentifiedAccess(false);
+      case PNI -> resultBuilder.setUnrestrictedUnidentifiedAccess(false);
     }
 
-    return responseBuilder.build();
+    return resultBuilder.build();
   }
 
-  static GetExpiringProfileKeyCredentialResponse getExpiringProfileKeyCredentialResponse(
-      final UUID targetUuid,
-      final String version,
+  static Optional<GetExpiringProfileKeyCredentialResult> getExpiringProfileKeyCredentialResult(
+      final Account account,
+      final byte[] version,
       final byte[] encodedCredentialRequest,
       final ProfilesManager profilesManager,
-      final ServerZkProfileOperations zkProfileOperations) throws StatusException {
+      final ServerZkProfileOperations zkProfileOperations) {
 
-    final VersionedProfile profile = profilesManager.get(targetUuid, version)
-        .orElseThrow(Status.NOT_FOUND.withDescription("Profile version not found")::asException);
-
-    final ExpiringProfileKeyCredentialResponse profileKeyCredentialResponse;
-    try {
-      profileKeyCredentialResponse = ProfileHelper.getExpiringProfileKeyCredential(encodedCredentialRequest,
-          profile, new ServiceId.Aci(targetUuid), zkProfileOperations);
-    } catch (VerificationFailedException | InvalidInputException e) {
-      throw Status.INVALID_ARGUMENT.withCause(e).asException();
+    final Optional<VersionedProfile> versionedProfile;
+    if (account.hasCapability(DeviceCapability.PROFILES_V2)) {
+      versionedProfile = profilesManager.get(account.getUuid(), version);
+    } else {
+      versionedProfile = Optional.empty();
     }
 
-    return GetExpiringProfileKeyCredentialResponse.newBuilder()
-        .setProfileKeyCredential(ByteString.copyFrom(profileKeyCredentialResponse.serialize()))
-        .build();
+    return versionedProfile.map(VersionedProfile::commitment)
+        .or(() -> profilesManager.getV1(account.getUuid(), HexFormat.of().formatHex(version)).map(VersionedProfileV1::commitment))
+        .map(commitment -> {
+
+          final ExpiringProfileKeyCredentialResponse profileKeyCredentialResponse;
+          try {
+            profileKeyCredentialResponse = ProfileHelper.getExpiringProfileKeyCredential(new ProfileKeyCredentialRequest(encodedCredentialRequest),
+                new ProfileKeyCommitment(commitment), new ServiceId.Aci(account.getUuid()), zkProfileOperations);
+          } catch (VerificationFailedException | InvalidInputException e) {
+            throw GrpcExceptions.constraintViolation("invalid credential request");
+          }
+
+          return GetExpiringProfileKeyCredentialResult.newBuilder()
+              .setProfileKeyCredential(ByteString.copyFrom(profileKeyCredentialResponse.serialize()))
+              .build();
+        });
+  }
+
+  /**
+   * Computes the SHA-256 hash of the given data.
+   * <p>
+   * Only needed during the v1 -> v2 migration. See also: VersionedProfile#hash(byte[])
+   */
+  @VisibleForTesting
+  public static byte[] hash(final byte[] data) {
+    final MessageDigest sha256;
+    try {
+      sha256 = MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new AssertionError(e);
+    }
+    return sha256.digest(data);
   }
 }

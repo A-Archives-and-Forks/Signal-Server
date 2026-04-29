@@ -1,18 +1,6 @@
 package org.whispersystems.textsecuregcm.util;
 
 import com.google.common.annotations.VisibleForTesting;
-import org.signal.libsignal.protocol.ServiceId;
-import org.signal.libsignal.zkgroup.InvalidInputException;
-import org.signal.libsignal.zkgroup.VerificationFailedException;
-import org.signal.libsignal.zkgroup.profiles.ExpiringProfileKeyCredentialResponse;
-import org.signal.libsignal.zkgroup.profiles.ProfileKeyCommitment;
-import org.signal.libsignal.zkgroup.profiles.ProfileKeyCredentialRequest;
-import org.signal.libsignal.zkgroup.profiles.ServerZkProfileOperations;
-import org.whispersystems.textsecuregcm.configuration.BadgeConfiguration;
-import org.whispersystems.textsecuregcm.identity.ServiceIdentifier;
-import org.whispersystems.textsecuregcm.storage.AccountBadge;
-import org.whispersystems.textsecuregcm.storage.VersionedProfile;
-import javax.annotation.Nullable;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,7 +11,25 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import javax.annotation.Nullable;
+import org.signal.libsignal.protocol.ServiceId;
+import org.signal.libsignal.zkgroup.InvalidInputException;
+import org.signal.libsignal.zkgroup.VerificationFailedException;
+import org.signal.libsignal.zkgroup.profiles.ExpiringProfileKeyCredentialResponse;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCommitment;
+import org.signal.libsignal.zkgroup.profiles.ProfileKeyCredentialRequest;
+import org.signal.libsignal.zkgroup.profiles.ServerZkProfileOperations;
+import org.whispersystems.textsecuregcm.configuration.BadgeConfiguration;
+import org.whispersystems.textsecuregcm.configuration.dynamic.DynamicConfiguration;
+import org.whispersystems.textsecuregcm.entities.CreateProfileRequest;
+import org.whispersystems.textsecuregcm.identity.ServiceIdentifier;
+import org.whispersystems.textsecuregcm.storage.Account;
+import org.whispersystems.textsecuregcm.storage.AccountBadge;
+import org.whispersystems.textsecuregcm.storage.DynamicConfigurationManager;
+import org.whispersystems.textsecuregcm.storage.VersionedProfile;
+import org.whispersystems.textsecuregcm.storage.VersionedProfileV1;
 
 public class ProfileHelper {
   public static int MAX_PROFILE_AVATAR_SIZE_BYTES = 10 * 1024 * 1024;
@@ -86,15 +92,43 @@ public class ProfileHelper {
   }
 
   public static ExpiringProfileKeyCredentialResponse getExpiringProfileKeyCredential(
-      final byte[] encodedCredentialRequest,
-      final VersionedProfile profile,
+      final ProfileKeyCredentialRequest request,
+      final ProfileKeyCommitment commitment,
       final ServiceId.Aci accountIdentifier,
       final ServerZkProfileOperations zkProfileOperations) throws InvalidInputException, VerificationFailedException {
+
     final Instant expiration = Instant.now().plus(EXPIRING_PROFILE_KEY_CREDENTIAL_EXPIRATION).truncatedTo(ChronoUnit.DAYS);
-    final ProfileKeyCommitment commitment = new ProfileKeyCommitment(profile.commitment());
-    final ProfileKeyCredentialRequest request = new ProfileKeyCredentialRequest(
-        encodedCredentialRequest);
 
     return zkProfileOperations.issueExpiringProfileKeyCredential(request, accountIdentifier, commitment, expiration);
+  }
+
+  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+  public static boolean isPaymentAddressUpdateForbidden(
+      final Account account, final Optional<VersionedProfile> maybeProfile,
+      final Optional<VersionedProfileV1> maybeV1Profile,
+      final DynamicConfigurationManager<DynamicConfiguration> dynamicConfigurationManager) {
+
+    final Optional<byte[]> currentPaymentAddress = maybeProfile.map(VersionedProfile::paymentAddress)
+        .or(() -> maybeV1Profile.map(VersionedProfileV1::paymentAddress));
+    final boolean hasDisallowedPrefix = dynamicConfigurationManager.getConfiguration().getPaymentsConfiguration()
+        .getDisallowedPrefixes().stream()
+        .anyMatch(prefix -> account.getNumber().startsWith(prefix));
+
+    return hasDisallowedPrefix && currentPaymentAddress.isEmpty();
+  }
+
+  @Nullable
+  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+  public static String getAvatar(final CreateProfileRequest.AvatarChange avatarChange, final Optional<String> currentAvatar) {
+    return switch (avatarChange) {
+      case UNCHANGED -> currentAvatar.orElse(null);
+      case CLEAR -> null;
+      case UPDATE -> ProfileHelper.generateAvatarObjectName();
+    };
+  }
+
+  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+  public static Optional<String> getCurrentAvatar(Optional<VersionedProfileV1> maybeV1Profile) {
+    return maybeV1Profile.map(VersionedProfileV1::avatar).filter(avatar -> avatar.startsWith("profiles/"));
   }
 }

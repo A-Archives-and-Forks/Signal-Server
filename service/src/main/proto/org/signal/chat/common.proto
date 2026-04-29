@@ -19,7 +19,7 @@ enum IdentityType {
 
 message ServiceIdentifier {
   // The type of identity represented by this service identifier.
-  IdentityType identity_type = 1;
+  IdentityType identity_type = 1 [(require.specified) = true];
 
   // The UUID of the identity represented by this service identifier.
   bytes uuid = 2 [(require.exactlySize) = 16];
@@ -83,6 +83,7 @@ enum DeviceCapability {
   reserved 5;
   DEVICE_CAPABILITY_ATTACHMENT_BACKFILL = 6;
   DEVICE_CAPABILITY_SPARSE_POST_QUANTUM_RATCHET = 7;
+  DEVICE_CAPABILITY_PROFILES_V2 = 8;
 }
 
 message ZkCredential {

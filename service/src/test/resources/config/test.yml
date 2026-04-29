@@ -131,6 +131,8 @@ dynamoDbTables:
     tableName: pni_test
   profiles:
     tableName: profiles_test
+  profilesV2:
+    tableName: profilesV2_test
   pushChallenge:
     tableName: push_challenge_test
   pushNotificationExperimentSamples:

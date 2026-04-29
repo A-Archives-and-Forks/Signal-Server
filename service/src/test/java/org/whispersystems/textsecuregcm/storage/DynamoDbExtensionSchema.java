@@ -258,6 +258,20 @@ public final class DynamoDbExtensionSchema {
                 .build()),
         List.of(), List.of()),
 
+    PROFILES_V2("profiles_v2_test",
+        ProfilesV2.KEY_ACCOUNT_UUID,
+        ProfilesV2.KEY_VERSION,
+        List.of(
+            AttributeDefinition.builder()
+                .attributeName(ProfilesV2.KEY_ACCOUNT_UUID)
+                .attributeType(ScalarAttributeType.B)
+                .build(),
+            AttributeDefinition.builder()
+                .attributeName(ProfilesV2.KEY_VERSION)
+                .attributeType(ScalarAttributeType.B)
+                .build()),
+        List.of(), List.of()),
+
     PUSH_CHALLENGES("push_challenge_test",
         PushChallengeDynamoDb.KEY_ACCOUNT_UUID,
         null,

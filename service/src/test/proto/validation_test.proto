@@ -10,6 +10,7 @@ option java_multiple_files = true;
 package org.signal.chat.rpc;
 
 import "org/signal/chat/require.proto";
+import "org/signal/chat/common.proto";
 import "google/protobuf/empty.proto";
 
 service ValidationTestService {
@@ -79,6 +80,11 @@ message ValidationsRequest {
   }
 
   optional string base64url = 33 [(require.base64url) = true];
+
+  optional common.ServiceIdentifier aciServiceIdentifier = 34 [(require.identityType) = IDENTITY_TYPE_ACI];
+  optional common.ServiceIdentifier pniServiceIdentifier = 35 [(require.identityType) = IDENTITY_TYPE_PNI];
+
+  // next 36
 }
 
 message NestedMessage {

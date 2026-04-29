@@ -125,6 +125,8 @@ dynamoDbTables:
     tableName: Example_PhoneNumberIdentifiers
   profiles:
     tableName: Example_Profiles
+  profilesV2:
+    tableName: Example_ProfilesV2
   pushChallenge:
     tableName: Example_PushChallenge
   pushNotificationExperimentSamples:

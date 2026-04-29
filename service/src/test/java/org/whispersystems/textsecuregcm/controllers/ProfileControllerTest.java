@@ -106,7 +106,7 @@ import org.whispersystems.textsecuregcm.storage.AccountsManager;
 import org.whispersystems.textsecuregcm.storage.DeviceCapability;
 import org.whispersystems.textsecuregcm.storage.DynamicConfigurationManager;
 import org.whispersystems.textsecuregcm.storage.ProfilesManager;
-import org.whispersystems.textsecuregcm.storage.VersionedProfile;
+import org.whispersystems.textsecuregcm.storage.VersionedProfileV1;
 import org.whispersystems.textsecuregcm.tests.util.AccountsHelper;
 import org.whispersystems.textsecuregcm.tests.util.AuthHelper;
 import org.whispersystems.textsecuregcm.tests.util.ProfileTestHelper;
@@ -232,8 +232,8 @@ class ProfileControllerTest {
     final byte[] about = TestRandomUtil.nextBytes(156);
     final byte[] phoneNumberSharing = TestRandomUtil.nextBytes(29);
 
-    when(profilesManager.get(eq(AuthHelper.VALID_UUID), eq(versionHex("someversion")))).thenReturn(Optional.empty());
-    when(profilesManager.get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")))).thenReturn(Optional.of(new VersionedProfile(
+    when(profilesManager.getV1(eq(AuthHelper.VALID_UUID), eq(versionHex("someversion")))).thenReturn(Optional.empty());
+    when(profilesManager.getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")))).thenReturn(Optional.of(new VersionedProfileV1(
         versionHex("validversion"), name, "profiles/validavatar", emoji, about, null, phoneNumberSharing, "validcommitment".getBytes())));
 
     when(profilesManager.deleteAvatar(anyString())).thenReturn(CompletableFuture.completedFuture(null));
@@ -467,10 +467,10 @@ class ProfileControllerTest {
             name, null, null,
             null, true, false, Optional.of(List.of()), null), MediaType.APPLICATION_JSON_TYPE), ProfileAvatarUploadAttributes.class);
 
-    final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+    final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-    verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID), eq(versionHex("someversion")));
-    verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID), profileArgumentCaptor.capture());
+    verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID), eq(versionHex("someversion")));
+    verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID), profileArgumentCaptor.capture());
 
     verifyNoMoreInteractions(profilesManager);
 
@@ -516,10 +516,10 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("anotherversion")));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("anotherversion")));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
 
       verifyNoMoreInteractions(profilesManager);
 
@@ -546,10 +546,10 @@ class ProfileControllerTest {
             name, null, null,
             null, true, false, Optional.of(List.of()), null), MediaType.APPLICATION_JSON_TYPE), ProfileAvatarUploadAttributes.class);
 
-    final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+    final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-    verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
-    verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+    verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
+    verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
     verify(profilesManager, times(1)).deleteAvatar("profiles/validavatar");
 
     assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -575,10 +575,10 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
       verify(profilesManager, times(1)).deleteAvatar(eq("profiles/validavatar"));
 
       assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -605,10 +605,10 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
       verify(profilesManager, never()).deleteAvatar(anyString());
 
       assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -633,10 +633,10 @@ class ProfileControllerTest {
             null, null,
             null, false, true, Optional.of(List.of()), null), MediaType.APPLICATION_JSON_TYPE))) {
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(versionHex("validversion")));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
       verify(profilesManager, times(1)).deleteAvatar(eq("profiles/validavatar"));
 
       assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -663,10 +663,10 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID), eq(version));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID), eq(version));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID), profileArgumentCaptor.capture());
       verify(profilesManager, never()).deleteAvatar(anyString());
 
       assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -694,10 +694,10 @@ class ProfileControllerTest {
                 null, null, null, true, false, Optional.of(List.of()), null),
             MediaType.APPLICATION_JSON_TYPE), ProfileAvatarUploadAttributes.class);
 
-    final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+    final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-    verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(version));
-    verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+    verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version));
+    verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
     verify(profilesManager, times(1)).deleteAvatar("profiles/validavatar");
 
     assertThat(profileArgumentCaptor.getValue().commitment()).isEqualTo(commitment.serialize());
@@ -731,14 +731,14 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(version));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
 
       verifyNoMoreInteractions(profilesManager);
 
-      final VersionedProfile profile = profileArgumentCaptor.getValue();
+      final VersionedProfileV1 profile = profileArgumentCaptor.getValue();
       assertThat(profile.commitment()).isEqualTo(commitment.serialize());
       assertThat(profile.avatar()).isNull();
       assertThat(profile.version()).isEqualTo(version);
@@ -771,14 +771,14 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager).get(eq(AuthHelper.VALID_UUID_TWO), eq(version));
-      verify(profilesManager).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version));
+      verify(profilesManager).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
 
       verifyNoMoreInteractions(profilesManager);
 
-      final VersionedProfile profile = profileArgumentCaptor.getValue();
+      final VersionedProfileV1 profile = profileArgumentCaptor.getValue();
       assertThat(profile.commitment()).isEqualTo(commitment.serialize());
       assertThat(profile.avatar()).isNull();
       assertThat(profile.version()).isEqualTo(version);
@@ -813,7 +813,7 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(403);
       assertThat(response.hasEntity()).isFalse();
 
-      verify(profilesManager, never()).set(any(), any());
+      verify(profilesManager, never()).setV1(any(), any());
     }
   }
 
@@ -831,9 +831,9 @@ class ProfileControllerTest {
 
     clearInvocations(AuthHelper.VALID_ACCOUNT_TWO);
 
-    when(profilesManager.get(eq(AuthHelper.VALID_UUID_TWO), any()))
+    when(profilesManager.getV1(eq(AuthHelper.VALID_UUID_TWO), any()))
         .thenReturn(Optional.of(
-            new VersionedProfile("1", name, null, null, null,
+            new VersionedProfileV1("1", name, null, null, null,
                 existingPaymentAddressOnProfile ? TestRandomUtil.nextBytes(582) : null,
                 phoneNumberSharing,
                 commitment.serialize())));
@@ -852,14 +852,14 @@ class ProfileControllerTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.hasEntity()).isFalse();
 
-        final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+        final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-        verify(profilesManager).get(eq(AuthHelper.VALID_UUID_TWO), eq(version));
-        verify(profilesManager).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+        verify(profilesManager).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version));
+        verify(profilesManager).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
 
         verifyNoMoreInteractions(profilesManager);
 
-        final VersionedProfile profile = profileArgumentCaptor.getValue();
+        final VersionedProfileV1 profile = profileArgumentCaptor.getValue();
         assertThat(profile.commitment()).isEqualTo(commitment.serialize());
         assertThat(profile.avatar()).isNull();
         assertThat(profile.version()).isEqualTo(version);
@@ -871,7 +871,7 @@ class ProfileControllerTest {
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.hasEntity()).isFalse();
 
-        verify(profilesManager, never()).set(any(), any());
+        verify(profilesManager, never()).setV1(any(), any());
       }
     }
   }
@@ -895,10 +895,10 @@ class ProfileControllerTest {
       assertThat(response.getStatus()).isEqualTo(200);
       assertThat(response.hasEntity()).isFalse();
 
-      final ArgumentCaptor<VersionedProfile> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfile.class);
+      final ArgumentCaptor<VersionedProfileV1> profileArgumentCaptor = ArgumentCaptor.forClass(VersionedProfileV1.class);
 
-      verify(profilesManager, times(1)).get(eq(AuthHelper.VALID_UUID_TWO), eq(version));
-      verify(profilesManager, times(1)).set(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
+      verify(profilesManager, times(1)).getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version));
+      verify(profilesManager, times(1)).setV1(eq(AuthHelper.VALID_UUID_TWO), profileArgumentCaptor.capture());
 
       verifyNoMoreInteractions(profilesManager);
 
@@ -919,7 +919,7 @@ class ProfileControllerTest {
     final byte[] phoneNumberSharing = TestRandomUtil.nextBytes(29);
 
     final String version = versionHex("validversion");
-    when(profilesManager.get(eq(AuthHelper.VALID_UUID_TWO), eq(version))).thenReturn(Optional.of(new VersionedProfile(
+    when(profilesManager.getV1(eq(AuthHelper.VALID_UUID_TWO), eq(version))).thenReturn(Optional.of(new VersionedProfileV1(
         version, name, "profiles/validavatar", emoji, about, null, phoneNumberSharing, "validcommitment".getBytes())));
 
     final VersionedProfileResponse profile = resources.getJerseyTest()
@@ -970,8 +970,8 @@ class ProfileControllerTest {
   void testGetProfileReturnsNoPaymentAddressIfCurrentVersionMismatch() {
     final byte[] paymentAddress = TestRandomUtil.nextBytes(582);
     final String version = versionHex("validversion");
-    when(profilesManager.get(AuthHelper.VALID_UUID_TWO, version)).thenReturn(
-        Optional.of(new VersionedProfile(null, null, null, null, null, paymentAddress, null, null)));
+    when(profilesManager.getV1(AuthHelper.VALID_UUID_TWO, version)).thenReturn(
+        Optional.of(new VersionedProfileV1(version, null, null, null, null, paymentAddress, null, null)));
 
     {
       final VersionedProfileResponse profile = resources.getJerseyTest()
@@ -1016,7 +1016,7 @@ class ProfileControllerTest {
     when(account.getCurrentProfileVersion()).thenReturn(Optional.of(versionHex("version")));
 
     when(accountsManager.getByAccountIdentifier(AuthHelper.VALID_UUID)).thenReturn(Optional.of(account));
-    when(profilesManager.get(any(), any())).thenReturn(Optional.empty());
+    when(profilesManager.getV1(any(), any())).thenReturn(Optional.empty());
 
     final ExpiringProfileKeyCredentialProfileResponse profile = resources.getJerseyTest()
         .target(String.format("/v1/profile/%s/%s/%s", AuthHelper.VALID_UUID, versionHex("version-that-does-not-exist"), "credential-request"))
@@ -1211,7 +1211,7 @@ class ProfileControllerTest {
     final ProfileKey profileKey = new ProfileKey(profileKeyBytes);
     final ProfileKeyCommitment profileKeyCommitment = profileKey.getCommitment(new ServiceId.Aci(AuthHelper.VALID_UUID));
 
-    final VersionedProfile versionedProfile = mock(VersionedProfile.class);
+    final VersionedProfileV1 versionedProfile = mock(VersionedProfileV1.class);
     when(versionedProfile.commitment()).thenReturn(profileKeyCommitment.serialize());
 
     final ProfileKeyCredentialRequestContext profileKeyCredentialRequestContext =
@@ -1233,7 +1233,7 @@ class ProfileControllerTest {
         serverZkProfile.issueExpiringProfileKeyCredential(credentialRequest, new ServiceId.Aci(AuthHelper.VALID_UUID), profileKeyCommitment, expiration);
 
     when(accountsManager.getByServiceIdentifier(new AciServiceIdentifier(AuthHelper.VALID_UUID))).thenReturn(Optional.of(account));
-    when(profilesManager.get(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
+    when(profilesManager.getV1(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
     when(zkProfileOperations.issueExpiringProfileKeyCredential(eq(credentialRequest), eq(new ServiceId.Aci(AuthHelper.VALID_UUID)), eq(profileKeyCommitment), any()))
         .thenReturn(credentialResponse);
 
@@ -1279,7 +1279,7 @@ class ProfileControllerTest {
     final ProfileKey profileKey = new ProfileKey(profileKeyBytes);
     final ProfileKeyCommitment profileKeyCommitment = profileKey.getCommitment(new ServiceId.Aci(AuthHelper.VALID_UUID));
 
-    final VersionedProfile versionedProfile = mock(VersionedProfile.class);
+    final VersionedProfileV1 versionedProfile = mock(VersionedProfileV1.class);
     when(versionedProfile.commitment()).thenReturn(profileKeyCommitment.serialize());
 
     final ProfileKeyCredentialRequestContext profileKeyCredentialRequestContext =
@@ -1294,7 +1294,7 @@ class ProfileControllerTest {
     when(account.getCurrentProfileVersion()).thenReturn(Optional.of(version));
 
     when(accountsManager.getByServiceIdentifier(new AciServiceIdentifier(AuthHelper.VALID_UUID))).thenReturn(Optional.of(account));
-    when(profilesManager.get(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
+    when(profilesManager.getV1(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
     when(zkProfileOperations.issueExpiringProfileKeyCredential(any(), any(), any(), any()))
         .thenThrow(new VerificationFailedException());
 
@@ -1324,7 +1324,7 @@ class ProfileControllerTest {
     final ProfileKey profileKey = new ProfileKey(profileKeyBytes);
     final ProfileKeyCommitment profileKeyCommitment = profileKey.getCommitment(new ServiceId.Aci(AuthHelper.VALID_UUID));
 
-    final VersionedProfile versionedProfile = mock(VersionedProfile.class);
+    final VersionedProfileV1 versionedProfile = mock(VersionedProfileV1.class);
     when(versionedProfile.commitment()).thenReturn(profileKeyCommitment.serialize());
     final String avatar = "avatar";
     when(versionedProfile.avatar()).thenReturn(avatar);
@@ -1341,7 +1341,7 @@ class ProfileControllerTest {
     when(account.getCurrentProfileVersion()).thenReturn(Optional.of(versionHex("the-current-version")));
 
     when(accountsManager.getByServiceIdentifier(new AciServiceIdentifier(AuthHelper.VALID_UUID))).thenReturn(Optional.of(account));
-    when(profilesManager.get(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
+    when(profilesManager.getV1(AuthHelper.VALID_UUID, version)).thenReturn(Optional.of(versionedProfile));
 
     final Response response = resources.getJerseyTest()
         .target(String.format("/v1/profile/%s/%s/%s", AuthHelper.VALID_UUID, version,

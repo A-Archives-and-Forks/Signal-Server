@@ -26,6 +26,7 @@ import org.whispersystems.textsecuregcm.grpc.validators.FieldValidator;
 import org.whispersystems.textsecuregcm.grpc.validators.NonEmptyFieldValidator;
 import org.whispersystems.textsecuregcm.grpc.validators.PresentFieldValidator;
 import org.whispersystems.textsecuregcm.grpc.validators.RangeFieldValidator;
+import org.whispersystems.textsecuregcm.grpc.validators.ServiceIdentifierIdentityTypeValidator;
 import org.whispersystems.textsecuregcm.grpc.validators.SizeFieldValidator;
 
 public class ValidatingInterceptor implements ServerInterceptor {
@@ -39,7 +40,8 @@ public class ValidatingInterceptor implements ServerInterceptor {
       "org.signal.chat.require.exactlySize", new ExactlySizeFieldValidator(),
       "org.signal.chat.require.range", new RangeFieldValidator(),
       "org.signal.chat.require.size", new SizeFieldValidator(),
-      "org.signal.chat.require.base64url", new Base64UrlFieldValidator()
+      "org.signal.chat.require.base64url", new Base64UrlFieldValidator(),
+      "org.signal.chat.require.identityType", new ServiceIdentifierIdentityTypeValidator()
   );
 
   @Override
@@ -64,9 +66,6 @@ public class ValidatingInterceptor implements ServerInterceptor {
         try {
           validateMessage(message);
           super.onMessage(message);
-        } catch (final StatusRuntimeException e) {
-          call.close(e.getStatus(), e.getTrailers());
-          forwardCalls = false;
         } catch (RuntimeException runtimeException) {
           final StatusRuntimeException grpcException = switch (runtimeException) {
             case StatusRuntimeException e -> e;
