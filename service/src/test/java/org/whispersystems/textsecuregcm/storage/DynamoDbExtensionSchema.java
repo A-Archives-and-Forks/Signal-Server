@@ -258,7 +258,7 @@ public final class DynamoDbExtensionSchema {
                 .build()),
         List.of(), List.of()),
 
-    PROFILES_V2("profiles_v2_test",
+    PROFILES_V2("profilesV2_test",
         ProfilesV2.KEY_ACCOUNT_UUID,
         ProfilesV2.KEY_VERSION,
         List.of(
